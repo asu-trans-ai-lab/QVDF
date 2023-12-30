@@ -1,15 +1,6 @@
 import csv
 import time
 
-_NUMBER_OF_SECOND_PER_MIN=60
-
-assign_period_start_time_in_hour=6
-assign_period_end_time_in_hour=10
-time_interval_in_min=5
-number_of_interval=int((assign_period_end_time_in_hour-assign_period_start_time_in_hour)*60/5)+1
-
-g_link_list=list()
-
 class Link:
     def __init__(self,link_id,V,QDF,t2,L,C,vc,vf,mm,a,b):
         self.link_id=link_id
@@ -26,7 +17,8 @@ class Link:
         self.b=float(b)
         
 
-def CDBCalibration():
+def CDBCalibration(_NUMBER_OF_SECOND_PER_MIN,assign_period_start_time_in_hour,assign_period_end_time_in_hour
+                   ,time_interval_in_min,number_of_interval):
     """
     Congestion Demand Based Calibration
     
@@ -62,6 +54,7 @@ def CDBCalibration():
     Time dependent travel time
 
     """
+    g_link_list = list()
     with open("link.csv","r") as fp:
         reader=csv.DictReader(fp)
         for line in reader:
@@ -149,8 +142,15 @@ def CDBCalibration():
     performance_fp.close()
     td_queue_fp.close()
     td_speed_fp.close()
+
 if __name__=="__main__":
-    CDBCalibration()
+    _NUMBER_OF_SECOND_PER_MIN = 60
+    assign_period_start_time_in_hour = 6
+    assign_period_end_time_in_hour = 10
+    time_interval_in_min = 5
+    number_of_interval = int((assign_period_end_time_in_hour - assign_period_start_time_in_hour) * 60 / 5) + 1
+    CDBCalibration(_NUMBER_OF_SECOND_PER_MIN, assign_period_start_time_in_hour, assign_period_end_time_in_hour
+                   , time_interval_in_min, number_of_interval)
     
 
             
