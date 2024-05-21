@@ -4,33 +4,40 @@ import os
 class CubeModel:
     def __init__(self, project_file):
         # Initialize Cube Voyager Application and open project
-        self.cube = cube.open_project(project_file)
-        self.project = self.cube.project
+        self.project = cube.open_project(project_file)
+        self.cube = self.project.cube
+        self.scenario = None
 
-    def calculate_travel_time_based_on_QVDF(self, volume, num_lanes, peak_load_factor, lane_based_ultimate_hourly_capacity, v_congestion_cutoff, link_length_in_km, Q_alpha, Q_beta, Q_cd, Q_n, Q_s, Q_cp, vf, beta, FFTT, t2, vt2, starting_time_in_hour, ending_time_in_hour):
+    def set_scenario(self, scenario_number):
+        self.scenario = self.project.scenarios[scenario_number]
+
+    def calculate_travel_time_based_on_QVDF(
+            self, volume, num_lanes, peak_load_factor=0.9, lane_based_ultimate_hourly_capacity=2000, v_congestion_cutoff=60,
+            link_length_in_km=1, Q_alpha=0.15, Q_beta=4, Q_cd=1, Q_n=1, Q_s=4, Q_cp=0.28125, vf=80, beta=2, FFTT=1,
+            t2=8, vt2=30, starting_time_in_hour=6, ending_time_in_hour=9):
         """
         Calculate travel time based on Queue Volume Delay Function (QVDF).
         
         Args:
             volume (float): Traffic volume.
             num_lanes (int): Number of lanes.
-            peak_load_factor (float): Peak load factor.
-            lane_based_ultimate_hourly_capacity (float): Ultimate hourly capacity per lane.
-            v_congestion_cutoff (float): Speed at congestion cutoff.
-            link_length_in_km (float): Length of the link in kilometers.
-            Q_alpha (float): QVDF parameter alpha.
-            Q_beta (float): QVDF parameter beta.
-            Q_cd (float): QVDF parameter cd.
-            Q_n (float): QVDF parameter n.
-            Q_s (float): QVDF parameter s.
-            Q_cp (float): QVDF parameter cp.
-            vf (float): Free flow speed.
-            beta (float): Beta parameter for speed calculation.
-            FFTT (float): Free Flow Travel Time in minutes.
-            t2 (float): Peak hour midpoint time in hours.
-            vt2 (float): Speed at peak hour.
-            starting_time_in_hour (float): Starting time in hours.
-            ending_time_in_hour (float): Ending time in hours.
+            peak_load_factor (float): Peak load factor. Default is 0.9.
+            lane_based_ultimate_hourly_capacity (float): Ultimate hourly capacity per lane. Default is 2000.
+            v_congestion_cutoff (float): Speed at congestion cutoff. Default is 60.
+            link_length_in_km (float): Length of the link in kilometers. Default is 1.
+            Q_alpha (float): QVDF parameter alpha. Default is 0.15.
+            Q_beta (float): QVDF parameter beta. Default is 4.
+            Q_cd (float): QVDF parameter cd. Default is 1.
+            Q_n (float): QVDF parameter n. Default is 1.
+            Q_s (float): QVDF parameter s. Default is 4.
+            Q_cp (float): QVDF parameter cp. Default is 0.28125.
+            vf (float): Free flow speed. Default is 80.
+            beta (float): Beta parameter for speed calculation. Default is 2.
+            FFTT (float): Free Flow Travel Time in minutes. Default is 1.
+            t2 (float): Peak hour midpoint time in hours. Default is 8.
+            vt2 (float): Speed at peak hour. Default is 30.
+            starting_time_in_hour (float): Starting time in hours. Default is 6.
+            ending_time_in_hour (float): Ending time in hours. Default is 9.
         
         Returns:
             float: Average travel time.
@@ -116,23 +123,23 @@ def adjustment_phase(result, cube_model):
     for link in adjusted_result.links:
         volume = link['VOLUME']
         num_lanes = link['NUM_LANES']
-        peak_load_factor = link['PEAK_LOAD_FACTOR']
-        lane_based_ultimate_hourly_capacity = link['CAPACITY']
-        v_congestion_cutoff = link['V_CONGESTION_CUTOFF']
-        link_length_in_km = link['LENGTH']
-        Q_alpha = link['Q_ALPHA']
-        Q_beta = link['Q_BETA']
-        Q_cd = link['Q_CD']
-        Q_n = link['Q_N']
-        Q_s = link['Q_S']
-        Q_cp = link['Q_CP']
-        vf = link['VF']
-        beta = link['BETA']
-        FFTT = link['FFTT']
-        t2 = link['T2']
-        vt2 = link['VT2']
-        starting_time_in_hour = link['START_HOUR']
-        ending_time_in_hour = link['END_HOUR']
+        peak_load_factor = link.get('PEAK_LOAD_FACTOR', 0.9)
+        lane_based_ultimate_hourly_capacity = link.get('CAPACITY', 2000)
+        v_congestion_cutoff = link.get('V_CONGESTION_CUTOFF', 60)
+        link_length_in_km = link.get('LENGTH', 1)
+        Q_alpha = link.get('Q_ALPHA', 0.15)
+        Q_beta = link.get('Q_BETA', 4)
+        Q_cd = link.get('Q_CD', 1)
+        Q_n = link.get('Q_N', 1)
+        Q_s = link.get('Q_S', 4)
+        Q_cp = link.get('Q_CP', 0.28125)
+        vf = link.get('VF', 80)
+        beta = link.get('BETA', 2)
+        FFTT = link.get('FFTT', 1)
+        t2 = link.get('T2', 8)
+        vt2 = link.get('VT2', 30)
+        starting_time_in_hour = link.get('START_HOUR', 6)
+        ending_time_in_hour = link.get('END_HOUR', 9)
         
         avg_travel_time = cube_model.calculate_travel_time_based_on_QVDF(
             volume, num_lanes, peak_load_factor, lane_based_ultimate_hourly_capacity,
@@ -149,12 +156,12 @@ project_path = "path_to_your_cube_project.cpj"
 scenario_number = 1  # Set the scenario number to run
 
 # Open the project
-project = cube.open_project(project_path)
-scenario = project.scenarios[scenario_number]
+cube_model = CubeModel(project_path)
+cube_model.set_scenario(scenario_number)
 
 # Load the network and demand matrix
-network = scenario.networks['Highway']
-demand_matrix = scenario.matrices['Demand']
+network = cube_model.scenario.networks['Highway']
+demand_matrix = cube_model.scenario.matrices['Demand']
 
 # Define highway assignment settings
 assignment_settings = cube.HWYAssignmentSettings(
@@ -166,14 +173,22 @@ assignment_settings = cube.HWYAssignmentSettings(
     time_field='TIME'
 )
 
-# Perform highway assignment
-result = cube.HWYAssignment(network, assignment_settings)
+# Perform initial highway assignment
+initial_result = cube.HWYAssignment(network, assignment_settings)
 
-# Create an instance of CubeModel
-cube_model = CubeModel(project_path)
+# Adjust assignment results using custom QVDF-based travel time calculations
+adjusted_result = adjustment_phase(initial_result, cube_model)
 
-# Adjust assignment results
-adjusted_result = adjustment_phase(result, cube_model)
+# Perform final highway assignment with adjusted travel times
+final_assignment_settings = cube.HWYAssignmentSettings(
+    assignment_type='ALL_OR_NOTHING',  # Or use other types such as 'USER_EQUILIBRIUM'
+    capacity_field='CAPACITY',
+    free_flow_time_field='FFT',
+    demand_matrix=demand_matrix,
+    volume_field='VOLUME',
+    time_field='TRAVEL_TIME'  # Using adjusted travel time
+)
+final_result = cube.HWYAssignment(network, final_assignment_settings)
 
 # Save the adjusted results
 adjusted_result.save(os.path.join(project_path, 'adjusted_assignment_results.csv'))
