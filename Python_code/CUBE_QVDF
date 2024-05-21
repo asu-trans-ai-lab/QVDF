@@ -1,0 +1,182 @@
+import cube
+import os
+
+class CubeModel:
+    def __init__(self, project_file):
+        # Initialize Cube Voyager Application and open project
+        self.cube = cube.open_project(project_file)
+        self.project = self.cube.project
+
+    def calculate_travel_time_based_on_QVDF(self, volume, num_lanes, peak_load_factor, lane_based_ultimate_hourly_capacity, v_congestion_cutoff, link_length_in_km, Q_alpha, Q_beta, Q_cd, Q_n, Q_s, Q_cp, vf, beta, FFTT, t2, vt2, starting_time_in_hour, ending_time_in_hour):
+        """
+        Calculate travel time based on Queue Volume Delay Function (QVDF).
+        
+        Args:
+            volume (float): Traffic volume.
+            num_lanes (int): Number of lanes.
+            peak_load_factor (float): Peak load factor.
+            lane_based_ultimate_hourly_capacity (float): Ultimate hourly capacity per lane.
+            v_congestion_cutoff (float): Speed at congestion cutoff.
+            link_length_in_km (float): Length of the link in kilometers.
+            Q_alpha (float): QVDF parameter alpha.
+            Q_beta (float): QVDF parameter beta.
+            Q_cd (float): QVDF parameter cd.
+            Q_n (float): QVDF parameter n.
+            Q_s (float): QVDF parameter s.
+            Q_cp (float): QVDF parameter cp.
+            vf (float): Free flow speed.
+            beta (float): Beta parameter for speed calculation.
+            FFTT (float): Free Flow Travel Time in minutes.
+            t2 (float): Peak hour midpoint time in hours.
+            vt2 (float): Speed at peak hour.
+            starting_time_in_hour (float): Starting time in hours.
+            ending_time_in_hour (float): Ending time in hours.
+        
+        Returns:
+            float: Average travel time.
+        """
+        
+        # Step 1: Calculate lane-based density (D) and Degree of Congestion (DOC)
+        lane_based_D = max(0.0, volume) / max(0.000001, num_lanes) / peak_load_factor
+        DOC = lane_based_D / max(0.00001, lane_based_ultimate_hourly_capacity)
+        
+        # Step 2: Calculate average queue speed and RTT (cutoff travel time)
+        avg_queue_speed = v_congestion_cutoff / (1.0 + Q_alpha * (DOC ** Q_beta))
+        RTT = link_length_in_km / v_congestion_cutoff
+
+        # Check for free flow regime
+        if DOC < 1:  # Free flow regime
+            vf_alpha = (1.0 + Q_alpha) * vf / max(0.0001, v_congestion_cutoff) - 1.0
+            vf_avg_speed = vf / (1.0 + vf_alpha * (DOC ** beta))
+            avg_queue_speed = vf_avg_speed
+            RTT = link_length_in_km / max(0.01, vf_avg_speed)
+        
+        # Calculate average speed using BPR (Bureau of Public Roads) formula
+        VOC = DOC
+        avg_speed_BPR = vf / (1.0 + Q_alpha * (VOC ** beta))
+        
+        # Calculate average travel time
+        avg_travel_time = FFTT * vf / max(0.1, avg_queue_speed)
+        avg_waiting_time = avg_travel_time - FFTT
+
+        # Step 4: Calculate time intervals and gamma value
+        P = Q_cd * pow(DOC, Q_n)
+        t0 = t2 - 0.5 * P
+        t3 = t2 + 0.5 * P
+        wt2 = None
+        Q_mu = lane_based_ultimate_hourly_capacity
+
+        if P > 0.15:  # Congested condition
+            Q_mu = min(lane_based_ultimate_hourly_capacity, lane_based_D / P)
+            wt2 = link_length_in_km / vt2 - RTT
+            self.Q_gamma = wt2 * 64 * Q_mu / (P ** 4)
+
+        td_w = 0
+        td_flow = 0
+
+        # Time-dependent speed model
+        model_speed = [0] * 300  # Initialize with 300 intervals (5-minute intervals over 25 hours)
+
+        for t_in_min in range(int(starting_time_in_hour * 60), int(ending_time_in_hour * 60), 5):
+            t = t_in_min / 60.0
+            td_queue = 0
+            td_speed = 0
+
+            if t0 <= t <= t3:  # Congested condition
+                td_queue = 0.25 * self.Q_gamma * (t - t0) ** 2 * (t - t3) ** 2
+                td_w = td_queue / max(0.001, Q_mu)
+                td_speed = link_length_in_km / (td_w + RTT)
+            elif t < t0:  # Before congestion
+                td_queue = 0
+                factor = (t - starting_time_in_hour) / max(0.001, t0 - starting_time_in_hour)
+                td_speed = (1 - factor) * vf + factor * max(v_congestion_cutoff, avg_queue_speed)
+            else:  # After congestion
+                td_queue = 0
+                factor = (t - t3) / max(0.001, ending_time_in_hour - t3)
+                td_speed = (1 - factor) * max(v_congestion_cutoff, avg_queue_speed) + factor * vf
+
+            t_interval = int(t_in_min / 5)
+            model_speed[t_interval] = td_speed
+
+        return avg_travel_time
+
+def adjustment_phase(result, cube_model):
+    """
+    Adjust the assignment results using QVDF-based travel time calculations.
+    
+    Args:
+        result: The initial assignment results.
+        cube_model (CubeModel): An instance of the CubeModel class.
+    
+    Returns:
+        Adjusted assignment results.
+    """
+    adjusted_result = result.copy()
+    
+    for link in adjusted_result.links:
+        volume = link['VOLUME']
+        num_lanes = link['NUM_LANES']
+        peak_load_factor = link['PEAK_LOAD_FACTOR']
+        lane_based_ultimate_hourly_capacity = link['CAPACITY']
+        v_congestion_cutoff = link['V_CONGESTION_CUTOFF']
+        link_length_in_km = link['LENGTH']
+        Q_alpha = link['Q_ALPHA']
+        Q_beta = link['Q_BETA']
+        Q_cd = link['Q_CD']
+        Q_n = link['Q_N']
+        Q_s = link['Q_S']
+        Q_cp = link['Q_CP']
+        vf = link['VF']
+        beta = link['BETA']
+        FFTT = link['FFTT']
+        t2 = link['T2']
+        vt2 = link['VT2']
+        starting_time_in_hour = link['START_HOUR']
+        ending_time_in_hour = link['END_HOUR']
+        
+        avg_travel_time = cube_model.calculate_travel_time_based_on_QVDF(
+            volume, num_lanes, peak_load_factor, lane_based_ultimate_hourly_capacity,
+            v_congestion_cutoff, link_length_in_km, Q_alpha, Q_beta, Q_cd, Q_n, Q_s,
+            Q_cp, vf, beta, FFTT, t2, vt2, starting_time_in_hour, ending_time_in_hour
+        )
+        
+        link['TRAVEL_TIME'] = avg_travel_time
+    
+    return adjusted_result
+
+# Main script
+project_path = "path_to_your_cube_project.cpj"
+scenario_number = 1  # Set the scenario number to run
+
+# Open the project
+project = cube.open_project(project_path)
+scenario = project.scenarios[scenario_number]
+
+# Load the network and demand matrix
+network = scenario.networks['Highway']
+demand_matrix = scenario.matrices['Demand']
+
+# Define highway assignment settings
+assignment_settings = cube.HWYAssignmentSettings(
+    assignment_type='ALL_OR_NOTHING',  # Or use other types such as 'USER_EQUILIBRIUM'
+    capacity_field='CAPACITY',
+    free_flow_time_field='FFT',
+    demand_matrix=demand_matrix,
+    volume_field='VOLUME',
+    time_field='TIME'
+)
+
+# Perform highway assignment
+result = cube.HWYAssignment(network, assignment_settings)
+
+# Create an instance of CubeModel
+cube_model = CubeModel(project_path)
+
+# Adjust assignment results
+adjusted_result = adjustment_phase(result, cube_model)
+
+# Save the adjusted results
+adjusted_result.save(os.path.join(project_path, 'adjusted_assignment_results.csv'))
+
+# Close the project
+project.close()
